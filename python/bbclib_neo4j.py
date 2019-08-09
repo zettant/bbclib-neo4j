@@ -2,6 +2,7 @@ from neo4j import GraphDatabase
 import bbclib
 import itertools
 import binascii
+import json
 
 
 def _get_cypher_ql(txobj):
@@ -18,8 +19,13 @@ def _get_cypher_ql(txobj):
         asset_group_id = rtn.asset_group_id.hex()
         user_id = rtn.asset.user_id.hex()
         asset_id = rtn.asset.asset_id.hex()
+        body = rtn.asset.asset_body
+        if isinstance(body, bytes) or isinstance(body, bytearray):
+            body = json.loads(body.decode())
+        elif isinstance(body, str):
+            body = json.loads(body)
         asset_body = list()
-        for k, v in rtn.asset.asset_body.items():
+        for k, v in body.items():
             asset_body.append("%s: \"%s\"" % (k, v))
         sql += " CREATE (this%d:asset {asset_id:\"%s\", transaction_id:\"%s\", timestamp:%d, asset_group_id:\"%s\", user_id:\"%s\", %s}) " % (i, asset_id, txid, timestamp, asset_group_id, user_id, ",".join(asset_body))
         pointers = list()
@@ -58,7 +64,12 @@ def create(asset_info_list, witness_users=None):
             print("Invalid request")
             return None, ""
         relation = bbclib.BBcRelation(asset_group_id=binascii.a2b_hex(rtn["asset_group_id"]))
-        relation.add(asset=bbclib.BBcAsset(user_id=binascii.a2b_hex(rtn["user_id"]), asset_body=rtn["asset_body"]))
+        if isinstance(rtn["asset_body"], dict):
+            relation.add(asset=bbclib.BBcAsset(user_id=binascii.a2b_hex(rtn["user_id"]), asset_body=json.dumps(rtn["asset_body"])))
+        elif isinstance(rtn["asset_body"], bytes) or isinstance(rtn["asset_body"], bytearray):
+            relation.add(asset=bbclib.BBcAsset(user_id=binascii.a2b_hex(rtn["user_id"]), asset_body=rtn["asset_body"].decode()))
+        else:
+            relation.add(asset=bbclib.BBcAsset(user_id=binascii.a2b_hex(rtn["user_id"]), asset_body=rtn["asset_body"]))
         if "pointers" in rtn:
             for ptr in rtn["pointers"]:
                 if "asset_id" not in ptr and "transaction_id" not in ptr:
